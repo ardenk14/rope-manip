@@ -101,8 +101,8 @@ class PandaImageSpacePushingEnv(gym.Env):
         self.camera_orn_top = [90, -95, 0]
         self.camera_dist_top = 0.7
 
-        # p.resetDebugVisualizerCamera(cameraDistance=1.5, cameraYaw=0, cameraPitch=-40,cameraTargetPosition=[0.55, -0.35, 0.2])
-        p.resetDebugVisualizerCamera(cameraDistance=self.camera_dist_top, cameraYaw=self.camera_orn_top[0], cameraPitch=self.camera_orn_top[1], cameraTargetPosition=self.camera_pos_top) # TODO: Remove
+        p.resetDebugVisualizerCamera(cameraDistance=1.5, cameraYaw=0, cameraPitch=-40,cameraTargetPosition=[0.55, -0.35, 0.2])
+        # p.resetDebugVisualizerCamera(cameraDistance=self.camera_dist_top, cameraYaw=self.camera_orn_top[0], cameraPitch=self.camera_orn_top[1], cameraTargetPosition=self.camera_pos_top) # TODO: Remove
 
         self.block_size = BOX_SIZE
 
@@ -123,6 +123,21 @@ class PandaImageSpacePushingEnv(gym.Env):
         self.action_space = spaces.Box(low=np.array([-1, -np.pi * 0.5, 0]),
                                        high=np.array([1, np.pi * 0.5, 1]))  #
 
+    def import_rope(self, rope_path):
+        self.rope_id = p.loadSoftBody(rope_path,
+                                    basePosition = [0.5,0,2],
+                                    scale = 1.0,
+                                    mass = .1,
+                                    useNeoHookean = 0, 
+                                    useBendingSprings=1,
+                                    useMassSpring=1, 
+                                    springElasticStiffness=40, 
+                                    springDampingStiffness=.1, 
+                                    springDampingAllDirections = 1, 
+                                    useSelfCollision = 1, 
+                                    frictionCoeff = .5, 
+                                    useFaceContact = 0)
+        
 
     def reset(self, object_pose=None, render_reset=True):
         self._set_object_positions()
@@ -508,6 +523,8 @@ if __name__ == '__main__':
 
     env = PandaImageSpacePushingEnv(debug=script_args.debug, include_obstacle=script_args.obstacle)
     env.reset()
+
+    env.import_rope('./assets/objects/cable.obj')
 
     for i in tqdm(range(2)):
         action_i = env.action_space.sample()
