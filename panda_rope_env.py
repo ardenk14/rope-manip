@@ -2,6 +2,7 @@ import pybullet as p
 from pybullet_utils import bullet_client
 import pybullet_data
 import numpy as np
+import math
 
 class PandaRopeEnv():
     def __init__(self, dt=0.1, gui=False) -> None:
@@ -14,7 +15,7 @@ class PandaRopeEnv():
 
         self._p.resetSimulation(p.RESET_USE_DEFORMABLE_WORLD)
         self._p.setGravity(0,0,-9.81)
-        self._p.setTimeStep(self.dt)
+        #self._p.setTimeStep(self.dt)
         self._p.setRealTimeSimulation(0)
 
         self._p.setAdditionalSearchPath(pybullet_data.getDataPath())
@@ -54,19 +55,27 @@ class PandaRopeEnv():
         self.view_matrix = self._p.computeViewMatrix([1.0, 0.0, 0.8], [0.6, 0, 0.4], [0, 0, 1])
         self.projection_matrix = self._p.computeProjectionMatrixFOV(self.cam_fov, self.img_aspect, self.dpth_near, self.dpth_far)
 
-    def load_rope(self, file_path, mass, Mu, Lambda, Damping):
-        self.ropeId = p.loadSoftBody("torus/torus_textured.obj",
-                                     simFileName="torus.vtk", 
-                                     mass = 3, 
-                                     useNeoHookean = 1, 
-                                     NeoHookeanMu = 800, 
-                                     NeoHookeanLambda = 1000, 
-                                     NeoHookeanDamping = 0.1, 
-                                     collisionMargin = 0.006, 
-                                     useSelfCollision = 1, 
-                                     frictionCoeff = 0.5, 
-                                     repulsionStiffness = 800)
+    def load_rope(self, file_path='assets/objects/cyl_100_1568.vtk', mass=0.007):
+        # Soft body parameters
+        mass = 0.007
+        scale = 0.012#0.018
+        # scale = 0.035
+        softBodyId = 0
+        useBend = True
+        ESt = 0.19
+        DSt = 0.0625
+        BSt = 0.05
+        Rp = 0.01
+        cMargin = 0.00475
+        friction = 1e99
 
+        self.ropeId = p.loadSoftBody(file_path, mass=mass, scale=scale, basePosition=[0.6, 0.5, 0.44],
+                                    baseOrientation=p.getQuaternionFromEuler([0, math.pi / 3, -math.pi/2]),
+                                    useNeoHookean=0, useBendingSprings=useBend, useMassSpring=1,
+                                    springElasticStiffness=ESt,
+                                    springDampingStiffness=DSt, springBendingStiffness=BSt, repulsionStiffness=Rp,
+                                    useSelfCollision=0,
+                                    collisionMargin=cMargin, frictionCoeff=friction, useFaceContact=0)
     
     def get_image(self):
         # Get rgb, depth, and segmentation images
