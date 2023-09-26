@@ -46,6 +46,7 @@
 import pybullet as p
 from time import sleep
 import pybullet_data
+import math
 
 physicsClient = p.connect(p.GUI)
 
@@ -55,14 +56,34 @@ p.resetSimulation(p.RESET_USE_DEFORMABLE_WORLD)
 p.resetDebugVisualizerCamera(3,-420,-30,[0.3,0.9,-2])
 p.setGravity(0, 0, -10)
 
-tex = p.loadTexture("uvmap.png")
+#tex = p.loadTexture("uvmap.png")
 planeId = p.loadURDF("plane.urdf", [0,0,-2])
 
-boxId = p.loadURDF("cube.urdf", [0,3,2],useMaximalCoordinates = True)
+#boxId = p.loadURDF("cube.urdf", [0,3,2],useMaximalCoordinates = True)
 
-bunnyId = p.loadSoftBody("torus/torus_textured.obj", simFileName="torus.vtk", mass = 3, useNeoHookean = 1, NeoHookeanMu = 180, NeoHookeanLambda = 600, NeoHookeanDamping = 0.01, collisionMargin = 0.006, useSelfCollision = 1, frictionCoeff = 0.5, repulsionStiffness = 800)
-p.changeVisualShape(bunnyId, -1, rgbaColor=[1,1,1,1], textureUniqueId=tex, flags=0)
+#bunnyId = p.loadSoftBody("cylinder.vtk", simFileName="cylinder.vtk", mass = 3, useNeoHookean = 1, NeoHookeanMu = 180, NeoHookeanLambda = 600, NeoHookeanDamping = 0.01, collisionMargin = 0.006, useSelfCollision = 1, frictionCoeff = 0.5, repulsionStiffness = 800)
+#p.changeVisualShape(bunnyId, -1, rgbaColor=[1,1,1,1], textureUniqueId=tex, flags=0)
 
+# Soft body parameters
+mass = 0.007
+scale = 0.018
+# scale = 0.035
+softBodyId = 0
+useBend = True
+ESt = 0.19
+DSt = 0.0625
+BSt = 0.05
+Rp = 0.01
+cMargin = 0.00475
+friction = 1e99
+
+softBodyId = p.loadSoftBody('assets/objects/cyl_100_1568.vtk', mass=mass, scale=scale, #, basePosition=state_object
+                            baseOrientation=p.getQuaternionFromEuler([0, math.pi / 2, -math.pi/2]),
+                            useNeoHookean=0, useBendingSprings=useBend, useMassSpring=1,
+                            springElasticStiffness=ESt,
+                            springDampingStiffness=DSt, springBendingStiffness=BSt, repulsionStiffness=Rp,
+                            useSelfCollision=0,
+                            collisionMargin=cMargin, frictionCoeff=friction, useFaceContact=0)
 
 # bunny2 = p.loadURDF("torus_deform.urdf", [0,1,0.5], flags=p.URDF_USE_SELF_COLLISION)
 
