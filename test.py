@@ -17,8 +17,8 @@ if __name__ == '__main__':
     env.load_rope()
     #env.reset()
     env._reset_joints()
-    joint_angles = env.get_joint_angles()
-    env.set_joint_angles(joint_angles)
+    # joint_angles = env.get_joint_angles()
+    # env.set_joint_angles(joint_angles)
     while True:
         img = env.get_image()
         env.stepSimulation()

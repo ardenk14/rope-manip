@@ -55,27 +55,43 @@ class PandaRopeEnv():
         self.view_matrix = self._p.computeViewMatrix([1.0, 0.0, 0.8], [0.6, 0, 0.4], [0, 0, 1])
         self.projection_matrix = self._p.computeProjectionMatrixFOV(self.cam_fov, self.img_aspect, self.dpth_near, self.dpth_far)
 
+        # planeId = p.loadURDF("plane.urdf", [-3,0,0], self._p.getQuaternionFromEuler((0, 3.1415/2.0, 0)))
+        planeId2 = p.loadURDF("plane.urdf", [0,0,-0.625])
+
     def load_rope(self, file_path='assets/objects/cyl_100_1568.vtk', mass=0.007):
         # Soft body parameters
-        mass = 0.007
+        mass = 0.1
         scale = 0.012#0.018
         # scale = 0.035
         softBodyId = 0
         useBend = True
-        ESt = 0.19
-        DSt = 0.0625
+        ESt = 3.0
+        DSt = 1.0
         BSt = 0.05
-        Rp = 0.01
+        Rp = 1.0
         cMargin = 0.00475
-        friction = 1e99
+        friction = 1.0
 
-        self.ropeId = p.loadSoftBody(file_path, mass=mass, scale=scale, basePosition=[0.6, 0.5, 0.44],
+        tex = p.loadTexture("uvmap.png")
+
+        self.ropeId = p.loadSoftBody(file_path,
+                                     mass=mass, 
+                                     scale=scale, 
+                                     basePosition=[0.6, 0.5, 0.44],
                                     baseOrientation=p.getQuaternionFromEuler([0, math.pi / 3, -math.pi/2]),
-                                    useNeoHookean=0, useBendingSprings=useBend, useMassSpring=1,
+                                    useNeoHookean=0, 
+                                    useBendingSprings=useBend, 
+                                    useMassSpring=1,
                                     springElasticStiffness=ESt,
-                                    springDampingStiffness=DSt, springBendingStiffness=BSt, repulsionStiffness=Rp,
+                                    springDampingStiffness=DSt, 
+                                    springBendingStiffness=BSt, 
+                                    repulsionStiffness=Rp,
                                     useSelfCollision=0,
-                                    collisionMargin=cMargin, frictionCoeff=friction, useFaceContact=0)
+                                    collisionMargin=cMargin, 
+                                    frictionCoeff=friction, 
+                                    useFaceContact=1)
+        
+        self._p.changeVisualShape(self.ropeId, -1, rgbaColor=[1,1,1,1], textureUniqueId=tex, flags=0)
     
     def get_image(self):
         # Get rgb, depth, and segmentation images
