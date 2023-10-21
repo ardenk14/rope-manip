@@ -123,16 +123,27 @@ class PandaRopeEnv():
         q = np.array([state[1] for state in states])
         return q
     
-    def move_ik(self, goal_pos):
+    def open_gripper(self):
+        '''
+        commands gripper to open, sim will need to be stepped
+        '''
+        self._p.setJointMotorControl2(self.panda, self.finger_joint_indxs[2], self._p.POSITION_CONTROL, targetPosition=0.04, maxVelocity=0.5)
+        self._p.setJointMotorControl2(self.panda, self.finger_joint_indxs[3], self._p.POSITION_CONTROL, targetPosition=0.04, maxVelocity=0.5)
+
+    def close_gripper(self):
+        self._p.setJointMotorControl2(self.panda, self.finger_joint_indxs[2], self._p.POSITION_CONTROL, targetPosition=0.0, maxVelocity=0.5)
+        self._p.setJointMotorControl2(self.panda, self.finger_joint_indxs[3], self._p.POSITION_CONTROL, targetPosition=0.0, maxVelocity=0.5)
+    
+    def move_ik(self, goal_pos, rpy = [3.14, 0, 1.57]):
         '''
         move to a position. Not 'blocking' ie doesn't step the simulation just sets commands
         args:
             - goal_pos: [x,y,z] of desired end-effector pose
         '''
         goal_config = self._p.calculateInverseKinematics(self.panda, 
-                                                        self.finger_joint_indxs[0], 
+                                                        self.finger_joint_indxs[-1], 
                                                         goal_pos,
-                                                        self._p.getQuaternionFromEuler((0, 1.57, 0)),
+                                                        self._p.getQuaternionFromEuler(rpy),
                                                         lowerLimits=self.joint_limits[0],
                                                         upperLimits=self.joint_limits[1],
                                                         # jointRanges=self.range_limits,
@@ -151,23 +162,32 @@ class PandaRopeEnv():
 
         return np.linalg.norm(goal_pos - self.get_ee_pos())
     
-    def move_ik_blocking(self, goal_pos, tol=0.01):
+    def move_ik_blocking(self, goal_pos, tol=0.01, nsteps=1000):
         '''
         moves with ik but also steps simulation until goal is reached
         '''
         dist = 1000000
-        while dist > tol:
+        i = 0
+        while dist > tol and i<nsteps:
             dist = self.move_ik(goal_pos)
+            print(dist)
             self.stepSimulation()
+            i += 1
 
     def get_ee_pos(self):
-        return self._p.getLinkState(self.panda, self.finger_joint_indxs[0])[0]
+        return self._p.getLinkState(self.panda, self.finger_joint_indxs[-1])[0]
 
     def stepSimulation(self):
         self._p.stepSimulation()
 
     def disconnect(self):
         self._p.disconnect()
+
+    def get_deform_points(self):
+        kwargs = {'flags': p.MESH_DATA_SIMULATION_MESH}
+        n_verts, mesh_verts_pos = self._p.getMeshData(self.ropeId, **kwargs)
+        mesh_verts_pos = np.array(mesh_verts_pos)
+        return mesh_verts_pos
 
 if __name__ == '__main__':
     env = PandaRopeEnv(gui=True)

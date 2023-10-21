@@ -1,8 +1,7 @@
-from panda_env import PandaEnv
-from panda_pushing_env import PandaImageSpacePushingEnv
 from panda_rope_env import PandaRopeEnv
 import pybullet as pb
 import time
+import random
 
 
 if __name__ == '__main__':
@@ -11,16 +10,34 @@ if __name__ == '__main__':
     # TODO: Collect images of rope and manipulation actions/proprioception and train autoencoder
     # TODO: Train dynamics model
 
-    #pb.connect(pb.GUI)
-    #env = PandaImageSpacePushingEnv()#PandaEnv()
     env = PandaRopeEnv(gui=True)
     env.load_rope()
-    #env.reset()
     env._reset_joints()
-    # joint_angles = env.get_joint_angles()
-    # env.set_joint_angles(joint_angles)
-    while True:
-        img = env.get_image()
+
+    env.open_gripper()
+    #let rope fall to initial position
+    for _ in range(200):
         env.stepSimulation()
-        print(env.get_ee_pos())
-    time.sleep(100)
+    
+    for i in range(10):
+        
+        #open gripper
+        env.open_gripper()
+        for _ in range(50):
+            env.stepSimulation()
+
+        # go to a random vertex on the rope
+        print('grabbing rope')
+        rope_pos = random.choice(env.get_deform_points())
+        print(rope_pos)
+        rope_pos[2] = 0.003
+        env.move_ik_blocking(rope_pos + [0,0,0.05], tol=0.02)
+        env.move_ik_blocking(rope_pos, tol = 0.02)
+
+        env.close_gripper()
+        for _ in range(50):
+            env.stepSimulation()
+
+        # pick up and drop it
+        env.move_ik_blocking(rope_pos + [0.0, 0.0, 0.15], tol=0.02)
+    time.sleep(10)
