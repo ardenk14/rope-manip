@@ -3,6 +3,16 @@ from pybullet_utils import bullet_client
 import pybullet_data
 import numpy as np
 import math
+import time
+import random
+
+W = 320
+H = 240
+rope_data_t = np.dtype([('img', np.uint8, (H,W,3)),
+                        ('seg_img', np.int32, (H,W)),
+                        ('joint_angles', np.float32, (7,)),
+                        ('ee_pos', np.float32, (3,)),
+                        ('action', np.float32, (3,))]) # action is cartesian delta
 
 class PandaRopeEnv():
     def __init__(self, dt=0.1, gui=False) -> None:
@@ -15,12 +25,12 @@ class PandaRopeEnv():
 
         self._p.resetSimulation(p.RESET_USE_DEFORMABLE_WORLD)
         self._p.setGravity(0,0,-9.81)
-        #self._p.setTimeStep(self.dt)
+        # self._p.setTimeStep(self.dt)
         self._p.setRealTimeSimulation(0)
 
         self._p.setAdditionalSearchPath(pybullet_data.getDataPath())
         # planeId = self._p.loadURDF("plane.urdf")
-        tableId = self._p.loadURDF("table/table.urdf", (0.5, 0, -0.625), self._p.getQuaternionFromEuler((0, 0, 3.1415/2.0)))
+        tableId = self._p.loadURDF("table/table.urdf", (0.4, 0, -0.625), self._p.getQuaternionFromEuler((0, 0, 3.1415/2.0)))
         self.panda = self._p.loadURDF('franka_panda/panda.urdf', useFixedBase=True)
 
         self.panda_joint_indxs = [0, 1, 2, 3, 4, 5, 6]
@@ -42,10 +52,8 @@ class PandaRopeEnv():
         ]
 
         # Camera Setup
-        self.img_width = 640
-        self.img_height = 480
-        # self.img_width = 1280
-        # self.img_height = 1280
+        self.img_width = W
+        self.img_height = H
 
         self.cam_fov = 54
         self.img_aspect = self.img_width / self.img_height
@@ -58,17 +66,21 @@ class PandaRopeEnv():
         # planeId = p.loadURDF("plane.urdf", [-3,0,0], self._p.getQuaternionFromEuler((0, 3.1415/2.0, 0)))
         planeId2 = p.loadURDF("plane.urdf", [0,0,-0.625])
 
-    def load_rope(self, file_path='assets/objects/cyl_100_1568.vtk', mass=0.007):
+    def load_rope(self, 
+                  file_path='assets/objects/cyl_100_1568.vtk', 
+                  mass=0.007,
+                  ESt = 3.0,
+                  DSt = 1.0,
+                  BSt = 0.05,
+                  Rp = 1.0):
+        
         # Soft body parameters
         mass = 0.1
         scale = 0.012#0.018
         # scale = 0.035
         softBodyId = 0
         useBend = True
-        ESt = 3.0
-        DSt = 1.0
-        BSt = 0.05
-        Rp = 1.0
+        
         cMargin = 0.00475
         friction = 1.0
 
@@ -77,7 +89,7 @@ class PandaRopeEnv():
         self.ropeId = p.loadSoftBody(file_path,
                                      mass=mass, 
                                      scale=scale, 
-                                     basePosition=[0.6, 0.5, 0.44],
+                                     basePosition=[0.35, 0.5, 0.3],
                                     baseOrientation=p.getQuaternionFromEuler([0, math.pi / 3, -math.pi/2]),
                                     useNeoHookean=0, 
                                     useBendingSprings=useBend, 
@@ -94,7 +106,7 @@ class PandaRopeEnv():
         self._p.changeVisualShape(self.ropeId, -1, rgbaColor=[1,1,1,1], textureUniqueId=tex, flags=0)
     
     def get_image(self):
-        # Get rgb, depth, and segmentation images
+        # Get rgb images
         images = self._p.getCameraImage(self.img_width,
                         self.img_height,
                         self.view_matrix,
@@ -104,6 +116,19 @@ class PandaRopeEnv():
         rgb_img = np.reshape(images[2], (self.img_height, self.img_width, 4))[:,:,:3]
         
         return rgb_img
+    
+    def get_img_seg(self):
+        # Get rgb and segmentation images
+        images = self._p.getCameraImage(self.img_width,
+                        self.img_height,
+                        self.view_matrix,
+                        self.projection_matrix,
+                        shadow=True,
+                        renderer=p.ER_BULLET_HARDWARE_OPENGL)
+        rgb_img = np.reshape(images[2], (self.img_height, self.img_width, 4))[:,:,:3]
+        seg_img = np.reshape(images[4], (self.img_height, self.img_width))
+        
+        return rgb_img, seg_img
     
     def set_joint_angles(self, q):
         self._p.setJointMotorControlArray(self.panda, self.panda_joint_indxs, self._p.POSITION_CONTROL, targetPositions = q)
@@ -157,12 +182,12 @@ class PandaRopeEnv():
             jointInfo = self._p.getJointInfo(self.panda, i)
             qIndex = jointInfo[3]
             if qIndex > -1:
-                self._p.setJointMotorControl2(self.panda, i, self._p.POSITION_CONTROL, targetPosition=goal_config[qIndex-7], maxVelocity=0.5)
+                self._p.setJointMotorControl2(self.panda, i, self._p.POSITION_CONTROL, targetPosition=goal_config[qIndex-7])
                 j += 1
 
         return np.linalg.norm(goal_pos - self.get_ee_pos())
     
-    def move_ik_blocking(self, goal_pos, tol=0.01, nsteps=1000):
+    def move_ik_blocking(self, goal_pos, tol=0.01, nsteps=200):
         '''
         moves with ik but also steps simulation until goal is reached
         '''
@@ -170,15 +195,48 @@ class PandaRopeEnv():
         i = 0
         while dist > tol and i<nsteps:
             dist = self.move_ik(goal_pos)
-            print(dist)
-            self.stepSimulation()
+            if not self.stepSimulation():
+                return False # false for rope explosion
+            i += 1
+        return True
+    
+    def move_ik_data(self, goal_pos, collection_rate = 10, tol=0.01, nsteps=200):
+        '''
+        collect data while doing an ik move
+        '''
+        dist = 1000000
+        i = 0
+        data = []
+        last_pos = self.get_ee_pos()
+        while dist > tol and i<nsteps:
+
+            if i > 0 and i % collection_rate == 0:
+                step_data = np.zeros(1, dtype=rope_data_t)
+                img, seg_img = self.get_img_seg()
+                pos = self.get_ee_pos()
+                step_data['img'] = img
+                step_data['seg_img'] = seg_img
+                step_data['joint_angles'] = self.get_joint_angles()
+                step_data['ee_pos'] = pos
+                step_data['action'] = pos - last_pos
+                last_pos = pos
+                data.append(step_data)
+
+            dist = self.move_ik(goal_pos)
+            if not self.stepSimulation():
+                return False, None# false for rope explosion
             i += 1
 
+        return True, np.array(data).squeeze()
+
     def get_ee_pos(self):
-        return self._p.getLinkState(self.panda, self.finger_joint_indxs[-1])[0]
+        return np.array(self._p.getLinkState(self.panda, self.finger_joint_indxs[-1])[0])
 
     def stepSimulation(self):
         self._p.stepSimulation()
+        if self.ropeId is not None and self.is_rope_exploded():
+            return False
+        return True
 
     def disconnect(self):
         self._p.disconnect()
@@ -188,6 +246,48 @@ class PandaRopeEnv():
         n_verts, mesh_verts_pos = self._p.getMeshData(self.ropeId, **kwargs)
         mesh_verts_pos = np.array(mesh_verts_pos)
         return mesh_verts_pos
+    
+    def is_rope_exploded(self):
+        points = self.get_deform_points()
+        bbx_sides = np.max(points, axis=0) - np.min(points, axis=0) #lengh of bbx sides
+        return np.any(bbx_sides > 1.5)
+
+    def push_rope(self):
+        rope_pos = random.choice(self.get_deform_points())
+        print(rope_pos)
+        if np.linalg.norm(rope_pos[:2]) > 0.75 or np.linalg.norm(rope_pos[:2]) < 0.2: #out of robot reach
+            return
+        rope_pos[2] = 0.003
+
+        magnitude = 0.1
+
+        theta = np.random.uniform(-3.14, 3.14)
+        direction = np.array([np.cos(theta), np.sin(theta), 0])
+
+        ### TEST ###
+        # rope_pos = self.get_deform_points()[100]
+        # rope_pos[2] = 0.003
+
+        # theta = 3.14
+        # direction = np.array([np.cos(theta), np.sin(theta), 0])
+        ############
+        ok = True
+
+        ok *= self.move_ik_blocking(rope_pos + magnitude*direction + [0,0,0.05])
+        ok *= self.move_ik_blocking(rope_pos + magnitude*direction)
+
+        ok *= self.move_ik_blocking(rope_pos - magnitude*direction)
+        ok *= self.move_ik_blocking(rope_pos - magnitude*direction + [0,0,0.05])
+
+        if not ok:
+            # rope has exploded
+            return False
+        return True
+    
+
+
+        
+        
 
 if __name__ == '__main__':
     env = PandaRopeEnv(gui=True)
