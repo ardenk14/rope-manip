@@ -10,6 +10,7 @@ W = 320
 H = 240
 rope_data_t = np.dtype([('img', np.uint8, (H,W,3)),
                         ('seg_img', np.int32, (H,W)),
+                        ('depth_img', np.float32, (H,W)),
                         ('joint_angles', np.float32, (7,)),
                         ('ee_pos', np.float32, (3,)),
                         ('action', np.float32, (3,))]) # action is cartesian delta
@@ -72,13 +73,11 @@ class PandaRopeEnv():
                   ESt = 3.0,
                   DSt = 1.0,
                   BSt = 0.05,
-                  Rp = 1.0):
+                  Rp = 1.0,
+                  angle=0):
         
         # Soft body parameters
-        mass = 0.1
-        scale = 0.012#0.018
-        # scale = 0.035
-        softBodyId = 0
+        scale = 0.012
         useBend = True
         
         cMargin = 0.00475
@@ -90,7 +89,7 @@ class PandaRopeEnv():
                                      mass=mass, 
                                      scale=scale, 
                                      basePosition=[0.35, 0.5, 0.3],
-                                    baseOrientation=p.getQuaternionFromEuler([0, math.pi / 3, -math.pi/2]),
+                                    baseOrientation=p.getQuaternionFromEuler([angle, math.pi / 3, -math.pi/2]),
                                     useNeoHookean=0, 
                                     useBendingSprings=useBend, 
                                     useMassSpring=1,
@@ -117,8 +116,8 @@ class PandaRopeEnv():
         
         return rgb_img
     
-    def get_img_seg(self):
-        # Get rgb and segmentation images
+    def get_img_seg_depth(self):
+        # Get rgb, depth and segmentation images
         images = self._p.getCameraImage(self.img_width,
                         self.img_height,
                         self.view_matrix,
@@ -126,9 +125,10 @@ class PandaRopeEnv():
                         shadow=True,
                         renderer=p.ER_BULLET_HARDWARE_OPENGL)
         rgb_img = np.reshape(images[2], (self.img_height, self.img_width, 4))[:,:,:3]
+        depth_img = np.reshape(images[3], (self.img_height, self.img_width))
         seg_img = np.reshape(images[4], (self.img_height, self.img_width))
         
-        return rgb_img, seg_img
+        return rgb_img, seg_img, depth_img
     
     def set_joint_angles(self, q):
         self._p.setJointMotorControlArray(self.panda, self.panda_joint_indxs, self._p.POSITION_CONTROL, targetPositions = q)
@@ -200,7 +200,19 @@ class PandaRopeEnv():
             i += 1
         return True
     
-    def move_ik_data(self, goal_pos, collection_rate = 10, tol=0.01, nsteps=200):
+    def make_data_sample(self, last_pos):
+        step_data = np.zeros(1, dtype=rope_data_t)
+        img, seg_img, depth_img = self.get_img_seg_depth()
+        pos = self.get_ee_pos()
+        step_data['img'] = img
+        step_data['seg_img'] = seg_img
+        step_data['depth_img'] = depth_img
+        step_data['joint_angles'] = self.get_joint_angles()
+        step_data['ee_pos'] = pos
+        step_data['action'] = pos - last_pos
+        return step_data
+
+    def move_ik_data(self, goal_pos, collection_rate = 10, tol=0.01, nsteps=50):
         '''
         collect data while doing an ik move
         '''
@@ -211,21 +223,14 @@ class PandaRopeEnv():
         while dist > tol and i<nsteps:
 
             if i > 0 and i % collection_rate == 0:
-                step_data = np.zeros(1, dtype=rope_data_t)
-                img, seg_img = self.get_img_seg()
-                pos = self.get_ee_pos()
-                step_data['img'] = img
-                step_data['seg_img'] = seg_img
-                step_data['joint_angles'] = self.get_joint_angles()
-                step_data['ee_pos'] = pos
-                step_data['action'] = pos - last_pos
-                last_pos = pos
-                data.append(step_data)
+                data.append(self.make_data_sample(last_pos))
+                last_pos = self.get_ee_pos()
 
             dist = self.move_ik(goal_pos)
             if not self.stepSimulation():
                 return False, None# false for rope explosion
             i += 1
+        data.append(self.make_data_sample(last_pos))
 
         return True, np.array(data).squeeze()
 
